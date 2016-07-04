@@ -1,0 +1,10 @@
+#!/usr/bin/env bash 
+
+# bin/release <build-dir>
+
+export ChrystokiConfigurationPath=${HOME}/app/lunaclient/
+
+echo "$(cat /tmp/buildpack-release-step.yml)"
+
+#---\ndefault_process_types:\n  web: <app name>"
+

@@ -1,0 +1,596 @@
+#!/bin/bash
+# usage: bin/compile <build-dir> <cache-dir> <env-dir>
+
+set -eo pipefail
+
+echo "Build Dir: $1"
+echo "Cache Dir: $2"
+echo "Env Dir: $3"
+
+currentDir=`pwd`
+echo "Current folder: ${currentDir}"
+
+
+lunaclient="lunaclient"
+
+scriptDir=`dirname $0`
+
+chmod 555 ${scriptDir}/../linux-amd64/bin/jq
+
+TOOL=""
+YELLOW='\033[1;33m'
+RED='\033[1;31m'
+NC='\033[0m' # No Color
+CURL="curl -s -L --retry 15 --retry-delay 2" # retry for up to 30 seconds
+
+handleDefaultPkgSpec() {
+    if [ "$pkgs" = "default" ];
+    then
+        warn "Installing package '.' (default)"
+        pkgs="."
+    fi
+}
+
+massagePkgSpecForVendor() {
+    local t=""
+    for pkg in $(echo $pkgs); do
+      if [ "${pkg:0:1}" = "." ] || [ ! -d "./vendor/$pkg" ]; then
+        t+="${pkg} "
+      else
+        t+="${name}/vendor/${pkg} "
+      fi
+    done
+    pkgs="${t}"
+}
+
+# Go releases have moved to a new URL scheme
+# starting with Go version 1.2.2. Return the old
+# location for known old versions and the new
+# location otherwise.
+urlfor() {
+    ver=$1
+    file=$2
+    case $ver in
+    go1.0*|go1.1beta*|go1.1rc*|go1.1|go1.1.*|go1.2beta*|go1.2rc*|go1.2|go1.2.1)
+        echo https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/go/$file
+        ;;
+    *)
+        echo https://storage.googleapis.com/golang/$file
+        ;;
+    esac
+}
+
+PRINT_SEPARATOR() {
+	echo "***************************************************"
+}
+
+extract_deps() {
+	PRINT_SEPARATOR
+	echo "Extracting tar file"
+	PRINT_SEPARATOR
+	mkdir -p $build/include
+	tar xvf $buildpack/lib/rocksdb.tar -C $build/include
+	PRINT_SEPARATOR
+	echo "Copy libs"
+	mkdir -p $build/lib
+	mv $build/include/lib* $build/lib
+	ln -s $build/lib/librocksdb.so.4.9.0 $build/lib/librocksdb.so
+	ln -s $build/lib/libsnappy.so.1.1.4 $build/lib/libsnappy.so
+	ln -s $build/lib/libtcmalloc.so.4.1.2 $build/lib/libtcmalloc.so.4
+	PRINT_SEPARATOR
+	echo "Check libs"
+	PRINT_SEPARATOR
+	pwd
+	ls $build/lib
+}
+
+
+get_luna_client_fr_url() {
+
+	echo "Download and extract Luna client"
+	PRINT_SEPARATOR
+	echo "Build folder : $build"
+	echo "Cache folder : $cache"
+	echo "Home: $HOME"
+	PRINT_SEPARATOR
+
+	buildpack_bin=$buildpack/bin
+	luna_libs_folder=$1/${lunaclient}
+	app_folder=$HOME/app 
+	mkdir -p $luna_libs_folder
+		
+	echo "Lib folder: $luna_libs_folder"
+	echo "Get index.yml ..."
+	
+	# Download the index.yml file using: curl -O http://files.cf-hsm.io/luna-installer/index.yml
+	index_url="http://files.cf-hsm.io/luna-installer/index.yml"
+	curl -O $index_url > /dev/null
+	PRINT_SEPARATOR
+	
+	echo "Get tar file ..."
+	tar_url=`cat index.yml | head -2 | tail -1 | awk '{print $2}'`
+	curl -O $tar_url > /dev/null
+	PRINT_SEPARATOR
+	
+	echo "Extracting tar ..."
+	tar_file=`basename $tar_url`
+	if [ -f "$tar_file" ]
+	then
+		tar xvf $tar_file -C $luna_libs_folder > /dev/null
+		libname=`ls ${luna_libs_folder}` 
+		echo "Rearrange the folder structure..."
+		mv ${luna_libs_folder}/${libname}/* ${luna_libs_folder}
+		PRINT_SEPARATOR
+		rm $tar_file
+	fi
+	PRINT_SEPARATOR
+	echo "Done"
+	
+}
+
+
+configure_luna() {
+	echo "Create Crystoki.conf ..."
+	
+	#Build environment
+	sandbox="${build}/${lunaclient}"
+	final_app_path=${home}/app
+		
+	vcap_json=${VCAP_SERVICES}
+	
+	if [ -n "$VCAP_SERVICES" ]
+	then
+		PRINT_SEPARATOR
+		
+		# Write client certificate to file
+		client_cert=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.client.certificate'`
+		echo ${client_cert} | sed 's/\\n/\n/g' | tr -d '"' > $sandbox/client-certificate.pem
+		
+		# Write client private key to file
+		client_key=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.client."private-key"'`
+		echo ${client_key} | sed 's/\\n/\n/g' | tr -d '"' > $sandbox/client-private-key.pem
+		
+		# Write server certificate to file
+		server_cert=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.servers[].certificate'`
+		echo ${server_cert} | sed 's/\\n/\n/g' | tr -d '"' > $sandbox/server-certificate.pem
+				
+		# Label
+		tmpvar=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.groups[].label'`
+		VLabel=`echo ${tmpvar} | tr -d '"'`
+		echo "Label: ${VLabel}"
+			
+		#members
+		tmpvar=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.groups[].members[]'`
+		Vmember=`echo ${tmpvar} | tr -d '"'`
+		echo "Member: ${Vmember}"
+		
+		#Server name
+		tmpvar=`echo ${VCAP_SERVICES} | ${scriptDir}/../linux-amd64/bin/jq '."user-provided"[].credentials.servers[].name'`
+		servername=`echo ${tmpvar} | tr -d '"'`
+		echo "Server name: ${servername}"
+	
+	else
+		PRINT_SEPARATOR
+		echo "***** VCAP_SERVICES not defined. *****"
+		PRINT_SEPARATOR
+	fi
+			
+	# Set HTL
+	htldir="${lunaclient}/htl"
+	
+	cat > ${sandbox}/Chrystoki.conf << EOF
+
+Luna = {
+  CloningCommandTimeOut = 300000;
+  CommandTimeOutPedSet  = 720000;
+  DefaultTimeOut = 500000;
+  KeypairGenTimeOut = 2700000;
+  PEDTimeout1 = 100000;
+  PEDTimeout2 = 200000;
+  PEDTimeout3 = 10000;
+}
+
+Misc = {
+  PE1746Enabled = 0;
+}\
+
+Chrystoki2 = {
+  LibUNIX64 = ${HOME}/app/${lunaclient}/libs/64/libCryptoki2.so;
+}
+
+LunaSA Client = {
+  NetClient = 1;
+  ClientCertFile = ${lunaclient}/client-certificate.pem;
+  ClientPrivKeyFile = ${lunaclient}/client-private-key.pem;
+  HtlDir = ${htldir};
+  ServerCAFile = ${lunaclient}/server-certificate.pem;
+
+  ServerName00 = ${servername};
+  ServerPort00 = 1792;
+  ServerHtl00 = 0;
+
+}
+
+VirtualToken = {
+  VirtualToken00Label = ${VLabel};
+  VirtualToken00SN = 1${Vmember};
+  VirtualToken00Members = ${Vmember};
+}
+
+HAConfiguration = {
+  AutoReconnectInterval = 60;
+  HAOnly = 1;
+  ReconnAtt = 20;
+}
+EOF
+	
+	PRINT_SEPARATOR
+	echo "Chrystoki file generated."
+		
+}
+
+
+modify_goscript() {
+	scriptfile=$1
+		
+	cat > $1 << EOF
+PATH=$PATH:$HOME/bin
+export CGO_LDFLAGS=-L/home/vcap/app/lib
+export LD_LIBRARY_PATH=/home/vcap/app/lib
+cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
+cd /home/vcap/app/peer
+
+EOF
+	
+}
+
+
+DEFAULT_GO_VERSION="go1.6"
+
+# Expand to supported versions of Go, (e.g. expand "go1.5" to latest release go1.5.2)
+# All specific or other versions, take as is.
+expand_ver() {
+  buildpack_dir=$1
+  target_version=$2
+  highest_ver="$($buildpack_dir/compile-extensions/bin/highest_version $buildpack_dir/manifest.yml go $target_version)"
+
+  if [ "$highest_ver" = "" ]; then
+    echo $target_version
+  else
+    echo $highest_ver
+  fi
+}
+
+# Report deprecated versions to user
+# Use after expand_ver
+report_ver() {
+  : # unsupported versions in Cloud Foundry will fail to push; no deprecation warnings needed
+}
+
+mkdir -p "$1" "$2"
+build=$(cd "$1/" && pwd)
+cache=$(cd "$2/" && pwd)
+env_dir=$3
+buildpack=$(cd "$(dirname $0)/.." && pwd)
+
+arch=$(uname -m|tr A-Z a-z)
+if test $arch = x86_64
+then arch=amd64
+fi
+plat=$(uname|tr A-Z a-z)-$arch
+
+# Python
+venv=$cache/venv
+mkdir -p $cache/pip
+
+python=python2.7
+PATH=$buildpack/$plat/bin:$venv/bin:$PATH
+steptxt="----->"
+
+# CF Common
+BUILDPACK_PATH=$buildpack
+export BUILDPACK_PATH
+source $buildpack/compile-extensions/lib/common
+export PYTHONHOME=$BUILDPACK_PATH/builds/runtimes/python-2.7.6
+export PATH=$PYTHONHOME/bin:$PATH
+$BUILDPACK_PATH/compile-extensions/bin/check_stack_support
+$BUILDPACK_PATH/compile-extensions/bin/download_dependency godep /tmp
+tar -xzf /tmp/godep -C /tmp
+PATH=/tmp/bin:$PATH
+# END CF Common
+
+virtualenv() {
+    python "$buildpack/vendor/virtualenv-1.11.6/virtualenv.py" "$@"
+}
+
+warn() {
+    echo -e "${YELLOW} !!    $@${NC}"
+}
+
+err() {
+    echo -e >&2 "${RED} !!    $@${NC}"
+}
+
+step() {
+    echo "$steptxt $@"
+}
+
+start() {
+    echo -n "$steptxt $@... "
+}
+
+finished() {
+    echo "done"
+}
+
+# allow apps to specify cgo flags and set up /app symlink so things like CGO_CFLAGS=-I/app/... work
+if [ ! -z "$env_dir" ]
+then
+    mkdir -p "$env_dir"
+    env_dir=$(cd "$env_dir/" && pwd)
+  for key in CGO_CFLAGS CGO_CPPFLAGS CGO_CXXFLAGS CGO_LDFLAGS GO_LINKER_SYMBOL GO_LINKER_VALUE GO15VENDOREXPERIMENT GOVERSION
+    do
+        if [ -f "$env_dir/$key" ]
+        then
+            export "$key=$(cat "$env_dir/$key")"
+        fi
+    done
+fi
+
+#export CGO_CFLAGS="/home/vcap/app/include"
+#export CGO_LDFLAGS="/home/vcap/app/native/lib/librocksdb.so"
+
+export CGO_CFLAGS="-I/tmp/app/include"
+export CGO_LDFLAGS="-L/tmp/app/native/lib -L/home/vcap/app/native/lib"
+#export CGO_LDFLAGS="CGO_LDFLAGS:-lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/home/vcap/app/native/lib"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/tmp/app/native/lib"
+export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$build/lib"
+
+export LIBRARY_PATH="$LIBRARY_PATH:/home/vcap/app/native/lib"
+export LIBRARY_PATH="$LIBRARY_PATH:/tmp/app/native/lib"
+export LIBRARY_PATH="$LIBRARY_PATH:$build/lib"
+
+if test -f "$build/Godeps/Godeps.json"
+then
+    TOOL="godep"
+    step "Checking Godeps/Godeps.json file."
+    if ! jq -r . < "$build/Godeps/Godeps.json" > /dev/null
+    then
+        err "Bad Godeps/Godeps.json file"
+        exit 1
+    fi
+    name=$(<$build/Godeps/Godeps.json jq -r .ImportPath)
+    ver=$(<$build/Godeps/Godeps.json jq -r .GoVersion)
+    TOOL="godep"
+elif test -f $build/.godir
+then
+    warn "Deprecated, .godir file found! Please update to supported Godeps dependency manager."
+    warn "See https://github.com/tools/godep for usage information."
+    exit 1
+elif (test -d "$build/src" && test -n "$(find "$build/src" -type f -name '*.go' | sed 1q)")
+then
+    TOOL="gb"
+    ver=${GOVERSION:-$DEFAULT_GO_VERSION}
+else
+    TOOL="go_nativevendoring"
+    ver=${GOVERSION:-$DEFAULT_GO_VERSION}
+    if [ -z $GOPACKAGENAME ]
+    then
+        err 'To use go native vendoring set the $GOPACKAGENAME'
+        err "environment variable to your app's package name"
+        exit 1
+    fi
+    name=$GOPACKAGENAME
+fi
+
+ver=$(expand_ver $buildpack $ver)
+
+file=${GOFILE:-$ver.linux-amd64.tar.gz}
+url=${GOURL:-$(urlfor $ver $file)}
+
+if test -e $build/bin && ! test -d $build/bin
+then
+    err ""
+    err "File bin exists and is not a directory."
+    err ""
+    exit 1
+fi
+
+report_ver $ver
+
+if test -d $cache/$ver/go
+then
+    step "Using $ver"
+else
+    rm -rf $cache/* # be sure not to build up cruft
+    mkdir -p $cache/$ver
+    cd $cache/$ver
+        exit_code=0
+        url=$(translate_dependency_url $ver) || exit_code=$?
+        if [ $exit_code -ne 0 ]; then
+          echo -e "`$buildpack/compile-extensions/bin/recommend_dependency $ver`" 1>&2
+          exit 22
+        fi
+
+    start "Installing $ver"
+        $CURL $url | tar zxf -
+    finished
+    echo "Downloaded [$url]"
+    cd - >/dev/null
+fi
+
+mkdir -p $build/bin
+GOROOT=$cache/$ver/go export GOROOT
+
+# If $GO_LINKER_SYMBOL and GO_LINKER_VALUE are set, tell the linker to DTRT
+FLAGS=(-tags cloudfoundry)
+if [ -n "$GO_LINKER_SYMBOL" -a -n "$GO_LINKER_VALUE" ]
+then
+    case $ver in
+    go1.5*|go1.6*)
+        xval="$GO_LINKER_SYMBOL=$GO_LINKER_VALUE"
+        ;;
+    *)
+        xval="$GO_LINKER_SYMBOL $GO_LINKER_VALUE"
+        ;;
+    esac
+    FLAGS+=(-ldflags "-X $xval")
+fi
+
+
+if [ -n "$PEER_WALLET" ]
+then
+  export CGO_CFLAGS="-I/tmp/app/include"	
+  export CGO_LDFLAGS="-L/tmp/app/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy" 
+fi
+
+
+case $TOOL in
+    godep)
+		PRINT_SEPARATOR
+		echo "GoDeps..."
+		PRINT_SEPARATOR
+	
+        GOBIN=$build/bin export GOBIN
+        GOPATH=$build/.heroku/go export GOPATH
+        PATH=$GOROOT/bin:$PATH
+
+        p=$GOPATH/src/$name
+        mkdir -p $p
+        cp -R $build/* $p
+
+        pkgs=$(<$build/Godeps/Godeps.json jq -r 'if .Packages then .Packages | join(" ") else "default" end')
+        handleDefaultPkgSpec
+
+        case $ver in
+        go1.5*)
+            if test "$GO15VENDOREXPERIMENT" = "1"
+            then
+                warn ""
+                warn "\$GO15VENDOREXPERIMENT=1. This is an experiment. Things may not work as expected."
+                warn "See https://devcenter.heroku.com/articles/go-support#go-1-5-vendor-experiment for more info."
+                warn ""
+               VendorExperiment="true"
+            fi
+        ;;
+        go1.6*)
+            if test "$GO15VENDOREXPERIMENT" = "0"
+            then
+                VendorExperiment="false"
+            else
+                VendorExperiment="true"
+            fi
+            FLAGS+=(--buildmode=pie)
+        ;;
+        *)
+            VendorExperiment="false"
+        ;;
+        esac
+
+        unset GIT_DIR # unset git dir or it will mess with goinstall
+        cd $p
+        if test "$VendorExperiment" = "true"
+        then
+            if test ! -d "$build/vendor"
+            then
+              warn ""
+              warn "vendor/ directory does not exist."
+              warn ""
+            fi
+            massagePkgSpecForVendor
+            step "Running1: go install -v ${FLAGS[@]} ${pkgs}"
+            go install -v "${FLAGS[@]}" ${pkgs} 2>&1
+        else
+            step "Running2: godep go install -v ${FLAGS[@]} ${pkgs}"
+            godep go install -v "${FLAGS[@]}" ${pkgs} 2>&1
+        fi
+    ;;
+    go_nativevendoring)
+	
+		PRINT_SEPARATOR
+		echo "Vendoring..."
+		PRINT_SEPARATOR
+
+        GOBIN=$build/bin export GOBIN
+        GOPATH=$build/.heroku/go export GOPATH
+        PATH=$GOROOT/bin:$PATH
+
+        p=$GOPATH/src/$name
+        mkdir -p $p
+        cp -R $build/* $p
+
+        pkgs="."
+
+        case $ver in
+        go1.5*)
+            if ! test "$GO15VENDOREXPERIMENT" = "1"
+            then
+                warn ""
+                warn "\$GO15VENDOREXPERIMENT is not =1. To use vendor your packages in vendor/"
+                warn "for go 1.5 this environment variable must be set to 1."
+                warn ""
+                exit 1
+            fi
+        ;;
+        go1.6*)
+            if test "$GO15VENDOREXPERIMENT" = "0"
+            then
+                warn ""
+                warn "\$GO15VENDOREXPERIMENT=0. To use vendor your packages in vendor/"
+                warn "for go 1.6 this environment variable must unset or set to 1."
+                warn ""
+                exit 1
+            fi
+        ;;
+        esac
+        
+        echo "Done"
+
+        unset GIT_DIR # unset git dir or it will mess with goinstall
+        cd $p
+        step "Running3: go install -v ${FLAGS[@]} ${pkgs}"
+		PRINT_SEPARATOR
+        go install -v "${FLAGS[@]}" ${pkgs} 2>&1
+		PRINT_SEPARATOR
+    ;;
+# GB installation currently unsupported
+    gb)
+        warn ""
+        warn "Error: Cloud Foundry does not support the GB package manager"
+        warn "We currently only support the 'Godep' package manager for go apps"
+        warn "For support please file an issue: https://github.com/cloudfoundry/go-buildpack/issues"
+        warn ""
+        exit 1
+    ;;
+esac
+
+echo -e "---\ndefault_process_types:\n  web: $(basename $name)" >> /tmp/buildpack-release-step.yml
+
+get_luna_client_fr_url $build
+PRINT_SEPARATOR
+
+scriptfolder=`dirname $0`
+echo "Scripts folder: $scriptfolder"
+PRINT_SEPARATOR
+configure_luna
+
+rm -rf $build/.heroku
+
+mkdir -p $build/.profile.d
+
+if [ -n "$PEER_WALLET" ]
+then
+	PRINT_SEPARATOR
+	echo "Adding CGO environment for PEER_WALLET..."
+	modify_goscript $build/.profile.d/go.sh
+else
+	echo "Normal environment for normal app..."
+	echo 'PATH=$PATH:$HOME/bin' > $build/.profile.d/go.sh
+fi
+
+cp $buildpack/vendor/concurrency.sh $build/.profile.d/
+
+
+
+
