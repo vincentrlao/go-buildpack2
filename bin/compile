@@ -242,10 +242,8 @@ PATH=$PATH:$HOME/bin
 export CGO_LDFLAGS=-L/home/vcap/app/lib
 export LD_LIBRARY_PATH=/home/vcap/app/lib
 cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
-cp /home/vcap/app/bin/fabric /home/vcap/app/peer/
-cp /home/vcap/app/bin/fabric /home/vcap/app/
-cd /home/vcap/app/peer
 
+cd /home/vcap/app/peer
 
 echo ">>>>>>>>>>>>>>>>>>>>>"
 ls -l /home/vcap/app
@@ -566,7 +564,12 @@ case $TOOL in
     ;;
 esac
 
-echo -e "---\ndefault_process_types:\n  web: $(basename $name)" >> /tmp/buildpack-release-step.yml
+if [ -n "$PEER_WALLET" ]
+then
+	echo -e "---\ndefault_process_types:\n  web: pwd" >> /tmp/buildpack-release-step.yml
+else
+	echo -e "---\ndefault_process_types:\n  web: $(basename $name)" >> /tmp/buildpack-release-step.yml
+fi
 
 get_luna_client_fr_url $build
 PRINT_SEPARATOR
@@ -595,7 +598,6 @@ cp $buildpack/vendor/concurrency.sh $build/.profile.d/
 echo "****************************"
 echo ">>> Release script:"
 echo "****************************"
-
 
 cat /tmp/buildpack-release-step.yml
 
