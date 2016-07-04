@@ -92,6 +92,9 @@ get_luna_client_fr_url() {
 	echo "Build folder : $build"
 	echo "Cache folder : $cache"
 	echo "Home: $HOME"
+	echo "GOROOT: $GOROOT"
+	echo "GOPATH: $GOPATH"
+
 	PRINT_SEPARATOR
 
 	buildpack_bin=$buildpack/bin
@@ -440,6 +443,7 @@ fi
 
 if [ -n "$PEER_WALLET" ]
 then
+  echo "Set PEER WALLET configuration path"
   export CGO_CFLAGS="-I/tmp/app/include"	
   export CGO_LDFLAGS="-L/tmp/app/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy" 
 fi
@@ -593,11 +597,6 @@ cp $buildpack/vendor/concurrency.sh $build/.profile.d/
 echo "****************************"
 echo ">>> Release script:"
 echo "****************************"
-
-echo "GOROOT: $GOROOT"
-echo "GO_ROOT: $GO_ROOT"
-echo "GOPATH: $GOPATH"
-echo "GO_PATH: $GO_PATH"
 
 cat /tmp/buildpack-release-step.yml
 
