@@ -594,5 +594,10 @@ echo "****************************"
 echo ">>> Release script:"
 echo "****************************"
 
+echo "GOROOT: $GOROOT"
+echo "GO_ROOT: $GO_ROOT"
+echo "GOPATH: $GOPATH"
+echo "GO_PATH: $GO_PATH"
+
 cat /tmp/buildpack-release-step.yml
 
