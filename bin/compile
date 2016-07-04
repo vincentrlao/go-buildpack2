@@ -64,25 +64,25 @@ PRINT_SEPARATOR() {
 	echo "***************************************************"
 }
 
-extract_deps() {
-	PRINT_SEPARATOR
-	echo "Extracting tar file"
-	PRINT_SEPARATOR
-	mkdir -p $build/include
-	tar xvf $buildpack/lib/rocksdb.tar -C $build/include
-	PRINT_SEPARATOR
-	echo "Copy libs"
-	mkdir -p $build/lib
-	mv $build/include/lib* $build/lib
-	ln -s $build/lib/librocksdb.so.4.9.0 $build/lib/librocksdb.so
-	ln -s $build/lib/libsnappy.so.1.1.4 $build/lib/libsnappy.so
-	ln -s $build/lib/libtcmalloc.so.4.1.2 $build/lib/libtcmalloc.so.4
-	PRINT_SEPARATOR
-	echo "Check libs"
-	PRINT_SEPARATOR
-	pwd
-	ls $build/lib
-}
+#extract_deps() {
+#	PRINT_SEPARATOR
+#	echo "Extracting tar file"
+#	PRINT_SEPARATOR
+#	mkdir -p $build/include
+#	tar xvf $buildpack/lib/rocksdb.tar -C $build/include
+#	PRINT_SEPARATOR
+#	echo "Copy libs"
+#	mkdir -p $build/lib
+#	mv $build/include/lib* $build/lib
+#	ln -s $build/lib/librocksdb.so.4.9.0 $build/lib/librocksdb.so
+#	ln -s $build/lib/libsnappy.so.1.1.4 $build/lib/libsnappy.so
+#	ln -s $build/lib/libtcmalloc.so.4.1.2 $build/lib/libtcmalloc.so.4
+#	PRINT_SEPARATOR
+#	echo "Check libs"
+#	PRINT_SEPARATOR
+#	pwd
+#	ls $build/lib
+#}
 
 
 get_luna_client_fr_url() {
@@ -243,8 +243,14 @@ export CGO_LDFLAGS=-L/home/vcap/app/lib
 export LD_LIBRARY_PATH=/home/vcap/app/lib
 cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
 cd /home/vcap/app/peer
-ls -l /home/vcap/app
 
+
+echo ">>>>>>>>>>>>>>>>>>>>>"
+ls -l /home/vcap/app
+echo ">>>>>>>>>>>>>>>>>>>>>"
+ls -l /home/vcap/app/bin
+echo ">>>>>>>>>>>>>>>>>>>>>"
+ls -l /home/vcap/app/peer
 
 EOF
 	
