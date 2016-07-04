@@ -566,7 +566,7 @@ esac
 
 if [ -n "$PEER_WALLET" ]
 then
-	echo -e "---\ndefault_process_types:\n  web: pwd" >> /tmp/buildpack-release-step.yml
+	echo -e "---\ndefault_process_types:\n  web: $(basename $name)" >> /tmp/buildpack-release-step.yml
 else
 	echo -e "---\ndefault_process_types:\n  web: $(basename $name)" >> /tmp/buildpack-release-step.yml
 fi
@@ -598,6 +598,10 @@ cp $buildpack/vendor/concurrency.sh $build/.profile.d/
 echo "****************************"
 echo ">>> Release script:"
 echo "****************************"
+echo "GO PATH: $GOPATH"
+echo "GO P2: $GO_PATH"
+echo "GO BUILD: $GO_BUILD"
+echo "GO B2: $GO_BUILD"
 
 cat /tmp/buildpack-release-step.yml
 
