@@ -597,6 +597,9 @@ fi
 
 cp $buildpack/vendor/concurrency.sh $build/.profile.d/
 
-
+echo "****************************"
+echo ">>> Release script:"
+echo "****************************"
+cat /tmp/buildpack-release-step.yml
 
 
