@@ -243,7 +243,7 @@ export CGO_LDFLAGS=-L/home/vcap/app/lib
 export LD_LIBRARY_PATH=/home/vcap/app/lib
 cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
 cd /home/vcap/app/peer
-find /home/vcap/app
+ls -l /home/vcap/app
 
 
 EOF
