@@ -235,12 +235,6 @@ modify_goscript() {
 		
 	cat > $1 << EOF
 PATH=$PATH:$HOME/bin
-echo "*************************************"
-echo "*************************************"
-echo "  Go script:
-echo "*************************************"
-echo "*************************************"
-find /home/vcap/app
 export CGO_LDFLAGS=-L/home/vcap/app/lib
 export LD_LIBRARY_PATH=/home/vcap/app/lib
 cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
