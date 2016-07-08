@@ -195,7 +195,7 @@ Luna = {
 
 Misc = {
   PE1746Enabled = 0;
-}\
+}
 
 Chrystoki2 = {
   LibUNIX64 = ${HOME}/app/${lunaclient}/libs/64/libCryptoki2.so;
@@ -245,15 +245,14 @@ PATH=$PATH:$HOME/bin
 export CGO_LDFLAGS=-L/home/vcap/app/lib
 export LD_LIBRARY_PATH=/home/vcap/app/lib
 cp /home/vcap/app/bin/fabric /home/vcap/app/peer/peer 
-
 cd /home/vcap/app/peer
 
-echo ">>>>>>>>>>>>>>>>>>>>>"
-ls -l /home/vcap/app
-echo ">>>>>>>>>>>>>>>>>>>>>"
-ls -l /home/vcap/app/bin
-echo ">>>>>>>>>>>>>>>>>>>>>"
-ls -l /home/vcap/app/peer
+echo "******************************************"
+ls -l /home/vcap/app/
+echo "******************************************"
+ls -l /home/vcap/app/bin/
+echo "******************************************"
+ls -l /home/vcap/app/peer/
 
 EOF
 	
@@ -552,6 +551,12 @@ case $TOOL in
 
         unset GIT_DIR # unset git dir or it will mess with goinstall
         cd $p
+		PRINT_SEPARATOR
+		PRINT_SEPARATOR
+		echo "Build directory: $p"
+		PRINT_SEPARATOR
+		find .
+		PRINT_SEPARATOR
         step "Running3: go install -v ${FLAGS[@]} ${pkgs}"
 		PRINT_SEPARATOR
         go install -v "${FLAGS[@]}" ${pkgs} 2>&1
@@ -594,3 +599,4 @@ fi
 
 cp $buildpack/vendor/concurrency.sh $build/.profile.d/
 
+echo "End of compile script"
