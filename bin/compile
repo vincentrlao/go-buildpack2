@@ -64,26 +64,6 @@ PRINT_SEPARATOR() {
 	echo "***************************************************"
 }
 
-#extract_deps() {
-#	PRINT_SEPARATOR
-#	echo "Extracting tar file"
-#	PRINT_SEPARATOR
-#	mkdir -p $build/include
-#	tar xvf $buildpack/lib/rocksdb.tar -C $build/include
-#	PRINT_SEPARATOR
-#	echo "Copy libs"
-#	mkdir -p $build/lib
-#	mv $build/include/lib* $build/lib
-#	ln -s $build/lib/librocksdb.so.4.9.0 $build/lib/librocksdb.so
-#	ln -s $build/lib/libsnappy.so.1.1.4 $build/lib/libsnappy.so
-#	ln -s $build/lib/libtcmalloc.so.4.1.2 $build/lib/libtcmalloc.so.4
-#	PRINT_SEPARATOR
-#	echo "Check libs"
-#	PRINT_SEPARATOR
-#	pwd
-#	ls $build/lib
-#}
-
 
 get_luna_client_fr_url() {
 
@@ -133,7 +113,7 @@ get_luna_client_fr_url() {
 
 
 configure_luna() {
-	echo "Create Crystoki.conf ..."
+	echo "Create Chrystoki.conf ..."
 	
 	#Build environment
 	sandbox="${build}/${lunaclient}"
@@ -141,7 +121,9 @@ configure_luna() {
 		
 	vcap_json=${VCAP_SERVICES}
 	
-	if [ -n "$VCAP_SERVICES" ]
+	echo "VCAP_SERVICES: [$VCAP_SERVICES]"
+	
+	if [[ "x$VCAP_SERVICES" != "x" ]] && [[ "$VCAP_SERVICES" != "{}" ]]
 	then
 		PRINT_SEPARATOR
 		
@@ -179,7 +161,7 @@ configure_luna() {
 	fi
 			
 	# Set HTL
-	htldir="${lunaclient}/htl"
+	htldir="${HOME}/app/${lunaclient}/htl"
 	
 	cat > ${sandbox}/Chrystoki.conf << EOF
 
@@ -203,10 +185,10 @@ Chrystoki2 = {
 
 LunaSA Client = {
   NetClient = 1;
-  ClientCertFile = ${lunaclient}/client-certificate.pem;
-  ClientPrivKeyFile = ${lunaclient}/client-private-key.pem;
+  ClientCertFile = ${HOME}/app/${lunaclient}/client-certificate.pem;
+  ClientPrivKeyFile = ${HOME}/app/${lunaclient}/client-private-key.pem;
   HtlDir = ${htldir};
-  ServerCAFile = ${lunaclient}/server-certificate.pem;
+  ServerCAFile = ${HOME}/app/${lunaclient}/server-certificate.pem;
 
   ServerName00 = ${servername};
   ServerPort00 = 1792;
